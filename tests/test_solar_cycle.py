@@ -115,8 +115,8 @@ class TestFitSolarCycle:
     
     def test_file_not_found(self):
         """Test file not found error"""
-        with pytest.raises(FileNotFoundError):
-            fit_solar_cycle('nonexistent_file.csv')
+        R0, A, T, phi = fit_solar_cycle('nonexistent_file.csv')
+        assert R0 is None, "Should return None on file not found"
     
     def test_empty_file(self):
         """Test empty file (only header)"""
@@ -124,8 +124,8 @@ class TestFitSolarCycle:
             writer = csv.DictWriter(f, fieldnames=['year', 'month', 'sunspot_number'])
             writer.writeheader()  # only header, no data
         
-        with pytest.raises(ValueError):  # curve_fit will fail
-            fit_solar_cycle(self.data_file)
+        R0, A, T, phi = fit_solar_cycle(self.data_file)
+        assert R0 is None, "Should return None on empty data"
 
 
 if __name__ == '__main__':

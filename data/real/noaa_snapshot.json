@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-05-23T05:03:23.243790+00:00",
+  "latest_class": "C1.4",
+  "wind_speed": 35471.0,
+  "density": 335.4,
+  "xrs_current": null,
+  "num_peaks_24h": 0,
+  "alerts": [
+    "\u592a\u9633\u98ce\u9ad8\u901f: 35471 km/s (>600)",
+    "\u592a\u9633\u98ce\u9ad8\u5bc6: 335.4 /cc (>20)"
+  ]
+}
