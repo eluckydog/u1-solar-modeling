@@ -1,49 +1,132 @@
 #!/usr/bin/env python3
 """
-测试 solar_cycle.py
+Test solar_cycle.py
 """
 
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'code'))
-
+import pytest
 import numpy as np
 import csv
+import tempfile
+import shutil
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'code'))
+
 from solar_cycle import solar_cycle, fit_solar_cycle
 
-def test_solar_cycle():
-    """测试太阳活动周期公式"""
-    # 测试已知输入
-    R0 = 50.0
-    A = 100.0
-    T = 11.0
-    phi = 0.0
-    
-    # t = 0 时，sin(0) = 0，所以 R(0) = R0
-    result = solar_cycle(0, R0, A, T, phi)
-    expected = R0
-    assert np.isclose(result, expected, atol=1e-6), f"t=0 错误: {result} != {expected}"
-    
-    # t = T/4 时，sin(π/2) = 1，所以 R(T/4) = R0 + A
-    result = solar_cycle(T/4, R0, A, T, phi)
-    expected = R0 + A
-    assert np.isclose(result, expected, atol=1e-6), f"t=T/4 错误: {result} != {expected}"
-    
-    print("✅ test_solar_cycle passed")
 
-def test_fit_solar_cycle():
-    """测试太阳活动周期拟合"""
-    data_file = os.path.join(os.path.dirname(__file__), '..', 'data', 'sunspot_number.csv')
-    R0_fit, A_fit, T_fit, phi_fit = fit_solar_cycle(data_file)
+class TestSolarCycle:
+    """Test solar cycle formula"""
     
-    # 检查拟合结果是否合理
-    assert 0 < R0_fit < 200, f"基线不合理: {R0_fit}"
-    assert 0 < A_fit < 200, f"振幅不合理: {A_fit}"
-    assert 9 < T_fit < 13, f"周期不合理: {T_fit}"  # 11 年周期 ±2 年
+    def test_baseline(self):
+        """Test baseline (R0)"""
+        R0 = 50.0
+        A = 100.0
+        T = 11.0
+        phi = 0.0
+        
+        # At t=0, sin(0)=0, so result should be R0
+        result = solar_cycle(0, R0, A, T, phi)
+        expected = R0
+        assert np.isclose(result, expected, atol=1e-6)
     
-    print("✅ test_fit_solar_cycle passed")
+    def test_maximum(self):
+        """Test maximum (R0 + A)"""
+        R0 = 50.0
+        A = 100.0
+        T = 11.0
+        phi = 0.0
+        
+        # At t = T/4, sin(π/2)=1, so result should be R0 + A
+        t = T / 4.0
+        result = solar_cycle(t, R0, A, T, phi)
+        expected = R0 + A
+        assert np.isclose(result, expected, atol=1e-6)
+    
+    def test_minimum(self):
+        """Test minimum (R0 - A)"""
+        R0 = 50.0
+        A = 100.0
+        T = 11.0
+        phi = 0.0
+        
+        # At t = 3T/4, sin(3π/2)=-1, so result should be R0 - A
+        t = 3 * T / 4.0
+        result = solar_cycle(t, R0, A, T, phi)
+        expected = R0 - A
+        assert np.isclose(result, expected, atol=1e-6)
+    
+    def test_periodicity(self):
+        """Test periodicity (R(t) = R(t+T))"""
+        R0 = 50.0
+        A = 100.0
+        T = 11.0
+        phi = 0.0
+        
+        t = 5.0
+        result1 = solar_cycle(t, R0, A, T, phi)
+        result2 = solar_cycle(t + T, R0, A, T, phi)
+        assert np.isclose(result1, result2, atol=1e-6)
+    
+    def test_phase_shift(self):
+        """Test phase shift"""
+        R0 = 50.0
+        A = 100.0
+        T = 11.0
+        phi = np.pi / 2.0  # 90 degree phase shift
+        
+        # At t=0 with phi=π/2, sin(π/2)=1, so result should be R0 + A
+        result = solar_cycle(0, R0, A, T, phi)
+        expected = R0 + A
+        assert np.isclose(result, expected, atol=1e-6)
+
+
+class TestFitSolarCycle:
+    """Test solar cycle fitting"""
+    
+    def setup_method(self):
+        """Setup before each test"""
+        self.temp_dir = tempfile.mkdtemp()
+        self.data_file = os.path.join(self.temp_dir, 'test_sunspot.csv')
+    
+    def teardown_method(self):
+        """Cleanup after each test"""
+        shutil.rmtree(self.temp_dir)
+    
+    def test_fit_simulated_data(self):
+        """Test fitting simulated data"""
+        # Create simulated data (11-year cycle)
+        with open(self.data_file, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['year', 'month', 'sunspot_number'])
+            writer.writeheader()
+            for year in range(1750, 2025):
+                for month in range(1, 13):
+                    t = year + month / 12.0
+                    R = 50.0 + 100.0 * np.sin(2 * np.pi * t / 11.0)
+                    writer.writerow({'year': year, 'month': month, 'sunspot_number': R})
+        
+        R0_fit, A_fit, T_fit, phi_fit = fit_solar_cycle(self.data_file)
+        
+        # Check fitting results are reasonable
+        assert 40.0 < R0_fit < 60.0, f"Baseline unreasonable: {R0_fit}"
+        assert 90.0 < A_fit < 110.0, f"Amplitude unreasonable: {A_fit}"
+        assert 10.0 < T_fit < 12.0, f"Period unreasonable: {T_fit}"
+    
+    def test_file_not_found(self):
+        """Test file not found error"""
+        with pytest.raises(FileNotFoundError):
+            fit_solar_cycle('nonexistent_file.csv')
+    
+    def test_empty_file(self):
+        """Test empty file (only header)"""
+        with open(self.data_file, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['year', 'month', 'sunspot_number'])
+            writer.writeheader()  # only header, no data
+        
+        with pytest.raises(ValueError):  # curve_fit will fail
+            fit_solar_cycle(self.data_file)
+
 
 if __name__ == '__main__':
-    test_solar_cycle()
-    test_fit_solar_cycle()
-    print("=== 所有测试通过 ===")
+    pytest.main([__file__, '-v', '-s'])
