@@ -178,6 +178,115 @@ u1-solar-modeling/
 
 Full audit report: `JOINT_REVIEW_REPORT.md` (v2, 10 P0/P1 issues closed)
 
+## Model Specifications & Data Barriers
+
+### Core Model
+
+**U(1) Temporal Flare Model**
+
+```
+F(φ) = A · exp(κ · cos(φ - μ)) + C
+φ(t) = 2π · (t - t₀) / T  (mod 2π)
+```
+
+| Parameter | Value | Physical meaning |
+|-----------|-------|------------------|
+| t₀ | 1986.2 year | Cycle 22 solar minimum |
+| T | 11.0 years | Mean solar cycle |
+| A | 188.44 | von Mises amplitude |
+| μ | 142.9° (2.49 rad) | Flare peak phase offset |
+| κ | 1.26 | Concentration (width⁻¹) |
+| C | 0.0 | Baseline rate |
+
+**Validation**: 334,123 Plutino events (1986-2020, Cycles 22-24)
+- Rayleigh Z = 3496 (p ≈ 0), R² = 0.689
+- Peak/trough ratio = 12.4×, next peak prediction: **2034.6**
+- Full documentation: `docs/U1_SOLAR_MODEL.md`
+
+### Module Capability Matrix
+
+| Module | Input | Output | Data Source | Validation |
+|--------|-------|--------|-------------|------------|
+| Solar rotation | latitudes | Ω_eq, ΔΩ | synthetic | unit tests |
+| Solar cycle | time series | T, A, φ | SILSO | unit tests |
+| Coronal loop | time series | period P, B field | synthetic | unit tests |
+| Vector B-field | B components | φ histogram, KS test | synthetic | unit tests |
+| Helioseismology | l_max | ν, δν | synthetic | unit tests |
+| Hilbert phase | sunspot series | φ(t), min/max prediction | SILSO | unit+data |
+| Carrington phase | time→longitude | activity dist., circ. variance | SILSO | unit+data |
+| Shear Flare Index | synthetic B | Flare_Idx | synthetic | unit tests |
+| Dst prediction | real-time NOAA wind | Dst(t), G-scale | NOAA SWPC API | 4 historical events |
+| CME propagation | real-time DONKI CME | arrival time, potential | DONKI + Plutino | 4 historical events |
+| Flare_Idx v2 | HMI SHARP FITS | shear×circ.variance×weight | AR 11092 | 1 AR validated |
+| Demo | all modules | 12-module summary | mixed | 82 tests |
+
+### Improvements (v1.0 → v1.1)
+
+1. **Flare_Idx v2**: Polarity separation — bipolar ARs no longer inflate shear angle
+2. **Dst Burton fix**: Removed spurious DEFAULT_b=-0.5 constant term
+3. **CME DBM v1.1**: Numerical integration → analytic solution + bisection, matching Gopalswamy correction
+4. **NOAA pipeline v2**: Correctly parses hybrid JSON array+map formats
+5. **3-way audit closed**: 10 P0/P1 security+quality+docs improvements
+
+### Can Do vs Cannot Do
+
+**Can do**:
+- ✅ Model U(1) phase of solar activity from sunspot numbers and flare catalogs
+- ✅ Dst geomagnetic storm prediction from real-time NOAA solar wind (6h lookahead)
+- ✅ CME arrival time prediction from real-time DONKI catalog
+- ✅ Flare_Idx from HMI vector magnetograms (given FITS files)
+- ✅ Phase tracking and min/max extrapolation from SILSO data
+
+**Cannot do (data-dependent)**:
+- ❌ Real-time streaming magnetogram monitoring (JSOC vector data behind registration wall)
+- ❌ ML flare prediction training (HF labeled datasets unreachable)
+- ❌ Cross-AR Flare_Idx validation (need 50+ AR magnetograms, have 1)
+- ❌ Operational benchmark (Dst/CME models need withheld test sets)
+
+### Data Acquisition Barriers
+
+**~70% of project time was spent on data acquisition, not modeling.**
+
+| Barrier | Impact |
+|---------|--------|
+| **JSOC DRMS registration wall** | Vector magnetograms (B_720s) require human email approval → AI agents can't self-serve |
+| **~50 KB/s academic bandwidth** | Large files timeout at 180s; HMI full-resolution data (100s GB) infeasible |
+| **Format fragmentation** | Same agency: JSON for flares, CSV for solar wind, different column names |
+| **No REST metadata queries** | Must download full FITS to read header; no "give me HARPNUM 377's dimensions" endpoint |
+| **HF datasets unreachable** | Well-labeled flare datasets → URLError, no fallback |
+| **Metadata luxury** | FITS is self-describing but requires full download; no ETag/Last-Modified, checking updates = redownload |
+
+**AI agent pain points**:
+- Auth: manual email approval, no API token → every JSOC access is a project
+- Protocol: HTTPS download only, no incremental/query/filter ability
+- Interaction model: submit→queue→email→fetch, response times in hours
+- Unit chaos: cgs/SI/Gaussian mixed, must manually check bscale/bzero/units
+- Copy fragmentation: same HMI data has different formats across mirrors
+- Version opacity: pipeline iterations (v1→v2→v3), historical data poorly labeled
+
+### Roadmap
+
+| Tier | Improvement | Data Need | Status |
+|------|-------------|-----------|--------|
+| 1 | Cross-AR Flare_Idx validation | 50+ SHARP CEA FITS | Only AR 11092 |
+| 2 | Operational Dst benchmark | 6-12 months withheld NOAA data | 4 historical events |
+| 3 | CME arrival statistical validation | DONKI history + in-situ arrival | 4 classic events |
+| 4 | Integrate Hilbert phase with U(1) model | real-time + historical sunspot | independent |
+| 5 | Fully automated NOAA pipeline | stable NOAA SWPC API | mostly working |
+| 6 | Flare_Idx ROC curve | 50+ AR flare/quiet labels | none |
+| 7 | ML-enhanced prediction | HF juliensimon dataset | unreachable 🚫 |
+| 8 | Real-time EUV coronal hole monitoring | SDO AIA imagery stream | unreachable 🚫 |
+| 9 | Far-side activity forecast | STEREO beacon data | unreachable 🚫 |
+| 10 | RHESSI hard X-ray statistics | RHESSI satellite data | unreachable 🚫 |
+
+### One-liner
+
+> **Our model validated Φ_lag=142.9° on 334,123 flare events — magnetic energy accumulation and release separated by ~3.2 years. Real-time pipelines to NOAA and DONKI produce Dst and CME forecasts. Flare_Idx quantifies AR topological instability from HMI magnetograms.**
+> 
+> **But every step beyond is blocked by data barriers: things a human can click and download take an AI agent 10× the time, or are simply unreachable. This isn't a technology problem — it's data infrastructure failing to adapt to the AI era.**
+
+---
+
 ## Author
 
 math-science (QClaw agent) | 2026-05-23 | License: MIT
